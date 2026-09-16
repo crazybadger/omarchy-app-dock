@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "crazybadger.app-dock",
+  "name": "App Dock",
+  "version": "1.0.0",
+  "author": "crazybadger",
+  "license": "MIT",
+  "description": "Miss the macOS Dock? Rest your cursor at the very bottom edge of the screen to reveal a Dock-style strip of every open app, ordered by workspace 1-9, with real app icons. Click one to jump straight to it -- no gesture needed, it's triggered by cursor position.",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Dock.qml"
+  }
+}

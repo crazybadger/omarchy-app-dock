@@ -1,0 +1,61 @@
+-- macOS Dock-style app dock (crazybadger.app-dock plugin): rest the cursor at
+-- the very bottom edge of the screen to reveal a Dock-style strip of every
+-- open app (ordered by workspace 1-9); move away to hide it again. This is a
+-- cursor-position trigger, not a gesture -- ROLLBACK: comment out (or delete)
+-- this whole block to disable it instantly, nothing else depends on it.
+--
+-- Two zones, not one: a slim edge strip to trigger *opening* (dwell-gated, so
+-- dragging a window to the bottom edge or resizing doesn't false-trigger),
+-- and a much taller "stay open" zone once it's open, so moving the cursor up
+-- into the dock's own icons to click one doesn't immediately hide it again.
+--
+-- hl.get_cursor_pos()/hl.dsp.cursor.move() use LOGICAL pixels; hl.get_
+-- monitor_at_cursor() returns PHYSICAL width/height + a `scale` field --
+-- divide by scale to compare them on the same axis.
+do
+  local dockOpen = false
+  local dockEdgeMs = 0
+  local dockLeaveMs = 0
+  local pollMs = 100
+  local openDwellMs = 350
+  local closeDwellMs = 250
+  local triggerZonePx = 4
+  local stayOpenZonePx = 170
+
+  local function setDock(open)
+    hl.dispatch(hl.dsp.exec_cmd("omarchy-shell shell " .. (open and "toggle" or "hide") .. " crazybadger.app-dock"))
+  end
+
+  hl.timer(function()
+    local pos = hl.get_cursor_pos()
+    local mon = hl.get_monitor_at_cursor()
+    if pos and mon then
+      local logicalBottom = (mon.y + mon.height) / (mon.scale or 1)
+      local fromBottom = logicalBottom - pos.y
+
+      if not dockOpen then
+        if fromBottom <= triggerZonePx then
+          dockEdgeMs = dockEdgeMs + pollMs
+          if dockEdgeMs >= openDwellMs then
+            dockOpen = true
+            dockEdgeMs = 0
+            setDock(true)
+          end
+        else
+          dockEdgeMs = 0
+        end
+      else
+        if fromBottom <= stayOpenZonePx then
+          dockLeaveMs = 0
+        else
+          dockLeaveMs = dockLeaveMs + pollMs
+          if dockLeaveMs >= closeDwellMs then
+            dockOpen = false
+            dockLeaveMs = 0
+            setDock(false)
+          end
+        end
+      end
+    end
+  end, { timeout = pollMs, type = "repeat" })
+end
