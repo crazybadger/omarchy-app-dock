@@ -144,22 +144,40 @@ Item {
       var themedLower = Quickshell.iconPath(lower, true)
       if (themedLower.length > 0) return themedLower
     }
+    // Icon filenames commonly use hyphens where a WM class uses spaces or
+    // different casing (e.g. class "Emby Theater" vs the installed icon
+    // file "emby-theater.png") -- normalize once more before giving up.
+    var normalized = lower.replace(/\s+/g, "-")
+    if (normalized !== lower) {
+      var indexedNorm = root.iconIndex[normalized]
+      if (indexedNorm) return Util.fileUrl(indexedNorm)
+      var themedNorm = Quickshell.iconPath(normalized, true)
+      if (themedNorm.length > 0) return themedNorm
+    }
     return ""
   }
 
-  // Some apps' running WM class has no relation to their installed icon
-  // (webapps especially). Their window titles do carry the app name, so as a
-  // last resort, match the title against installed .desktop entries.
-  function desktopIconForTitle(title) {
-    var t = String(title || "").toLowerCase()
-    if (t.length === 0) return ""
+  // Some apps' running WM class/appId has no relation to their installed
+  // icon at all (webapps especially), so as a last resort match against
+  // installed .desktop entries' Name= field -- tried against both the class
+  // and the title, since either can carry the human-readable app name.
+  // Bidirectional substring match: usually the window text is the longer,
+  // more verbose one ("OmniFocus for the Web" contains "OmniFocus"), but
+  // sometimes it's shorter than the full app name (Emby Theater's window
+  // title is just "Emby", shorter than its .desktop Name "Emby Theater") --
+  // check both directions, each with a minimum length to avoid junk matches
+  // off a short/generic string.
+  function desktopIconForText(text) {
+    var t = String(text || "").toLowerCase()
+    if (t.length < 3) return ""
     var entries = DesktopEntries.applications.values || []
     var bestIcon = ""
     var bestLen = 0
     for (var i = 0; i < entries.length; i++) {
       var e = entries[i]
       var name = String((e && e.name) || "").toLowerCase()
-      if (name.length < 3 || t.indexOf(name) === -1) continue
+      if (name.length < 3) continue
+      if (t.indexOf(name) === -1 && name.indexOf(t) === -1) continue
       if (name.length > bestLen) { bestLen = name.length; bestIcon = String((e && e.icon) || "") }
     }
     return bestIcon
@@ -167,9 +185,10 @@ Item {
 
   function resolveIconForToplevel(toplevel) {
     if (!toplevel) return Quickshell.iconPath("application-x-executable", true)
-    var found = root.lookupIconName(root.appIdForToplevel(toplevel))
+    var appId = root.appIdForToplevel(toplevel)
+    var found = root.lookupIconName(appId)
     if (found.length === 0) {
-      var deIcon = root.desktopIconForTitle(toplevel.title)
+      var deIcon = root.desktopIconForText(appId) || root.desktopIconForText(toplevel.title)
       if (deIcon.length > 0) found = root.lookupIconName(deIcon)
     }
     if (found.length === 0) {
