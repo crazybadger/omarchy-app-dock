@@ -57,7 +57,7 @@ do
     local pos = hl.get_cursor_pos()
     local mon = hl.get_monitor_at_cursor()
     if pos and mon then
-      local logicalBottom = (mon.y + mon.height) / (mon.scale or 1)
+      local logicalBottom = mon.y + mon.height / (mon.scale or 1)
       local fromBottom = logicalBottom - pos.y
 
       if not dockOpen then
@@ -130,11 +130,15 @@ omarchy-shell shell hide crazybadger.app-dock     # close only
   `.address` **without** the `0x` prefix Hyprland's own window-selector
   syntax requires. Missing that prefix doesn't error — the dispatcher just
   silently matches nothing. Prepend `0x` before building the command.
-- **Cursor-position units mismatch:** `hl.get_cursor_pos()` and
-  `hl.dsp.cursor.move({x,y})` use *logical* pixels, but
-  `hl.get_monitor_at_cursor()` returns *physical* width/height (plus a
-  `.scale` field) — divide the physical value by `.scale` before comparing
-  them, or the edge-detection math is silently wrong on any scaled monitor.
+- **Cursor-position units mismatch:** `hl.get_cursor_pos()`,
+  `hl.dsp.cursor.move({x,y})` and the monitor's `x`/`y` are all *logical*
+  layout pixels, but `hl.get_monitor_at_cursor()`'s `width`/`height` are
+  *physical* (plus a `.scale` field). Only the **height** is divided by the
+  scale: the bottom edge is `y + height / scale`, **not** `(y + height) / scale`.
+  The two agree while the monitor sits at `y = 0`, so the wrong version looks
+  fine on a single screen — then puts the trigger far above the real edge as
+  soon as the monitor is offset in the layout (e.g. a saved multi-monitor
+  arrangement).
 - `keepLoaded: true`, same as Ribbon — instantiated once at shell start.
   **Note for future edits:** live-editing this QML while the shell is
   already running doesn't reliably refresh an already-open instance — run

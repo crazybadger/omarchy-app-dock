@@ -9,9 +9,11 @@
 -- and a much taller "stay open" zone once it's open, so moving the cursor up
 -- into the dock's own icons to click one doesn't immediately hide it again.
 --
--- hl.get_cursor_pos()/hl.dsp.cursor.move() use LOGICAL pixels; hl.get_
--- monitor_at_cursor() returns PHYSICAL width/height + a `scale` field --
--- divide by scale to compare them on the same axis.
+-- hl.get_cursor_pos(), hl.dsp.cursor.move() and the monitor's x/y are all LOGICAL
+-- layout pixels, but hl.get_monitor_at_cursor()'s width/height are PHYSICAL (plus a
+-- `scale` field). So only the height is divided by scale: bottom = y + height/scale,
+-- NOT (y + height)/scale -- that is only right when y == 0, and puts the trigger far
+-- above the real edge as soon as the monitor sits lower in the layout.
 do
   local dockOpen = false
   local dockEdgeMs = 0
@@ -30,7 +32,7 @@ do
     local pos = hl.get_cursor_pos()
     local mon = hl.get_monitor_at_cursor()
     if pos and mon then
-      local logicalBottom = (mon.y + mon.height) / (mon.scale or 1)
+      local logicalBottom = mon.y + mon.height / (mon.scale or 1)
       local fromBottom = logicalBottom - pos.y
 
       if not dockOpen then
