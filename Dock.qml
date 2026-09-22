@@ -236,9 +236,30 @@ Item {
     return list
   }
 
+  // Title alone can double up (two windows that happen to share an exact
+  // title both light up as active). ToplevelManager.activeToplevel is the
+  // *other* toplevel type (the generic Wayland one, not Hyprland's own), and
+  // -- confirmed live -- it carries no .address, so unlike focusEntry() below
+  // there's no address to match on here. It does carry a real .appId though,
+  // so also requiring that narrows the collision to "two windows of the same
+  // app with the exact same title", instead of any two windows at all.
+  //
+  // The appId lookup for entry.toplevel (Hyprland's own type -- title/
+  // address/workspace only, no class/appId, per titleToAppId()'s comment
+  // above) has to go through that same title cross-reference. Read once here
+  // as a cached property, not per-tile inside isActive(): every tile's
+  // `active` binding calls isActive(), and calling titleToAppId() -- which
+  // reads the reactive ToplevelManager.toplevels.values -- fresh from each of
+  // those bindings created a real "binding loop detected" warning.
+  readonly property var _titleToAppId: root.titleToAppId()
+
   function isActive(entry) {
     var active = ToplevelManager.activeToplevel
-    return active && entry && String(active.title || "") === String(entry.toplevel.title || "")
+    if (!active || !entry) return false
+    if (String(active.title || "") !== String(entry.toplevel.title || "")) return false
+    var activeAppId = String(active.appId || "")
+    if (activeAppId.length === 0) return true // nothing to cross-check against; fall back to the title match
+    return activeAppId === (root._titleToAppId[String(entry.toplevel.title || "")] || "")
   }
 
   // Focus by address (unambiguous even when two windows share a title, unlike
