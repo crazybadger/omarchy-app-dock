@@ -35,10 +35,26 @@ cursor-edge trigger from **Trigger it** below, then `omarchy restart shell`.
 Unlike a gesture-bound plugin, this is driven by a small cursor-position
 poller in `~/.config/hypr/input.lua` — there's no single dispatcher call to
 bind to a key, since "reveal when the cursor rests at the bottom edge" isn't
-a stock Hyprland gesture. Add this block (or see the full version with
-comments in this repo's `input.lua.snippet`):
+a stock Hyprland gesture. Add this block (it's the same as this repo's
+`input.lua.snippet`):
 
 ```lua
+-- macOS Dock-style app dock (crazybadger.app-dock plugin): rest the cursor at
+-- the very bottom edge of the screen to reveal a Dock-style strip of every
+-- open app (ordered by workspace 1-9); move away to hide it again. This is a
+-- cursor-position trigger, not a gesture -- ROLLBACK: comment out (or delete)
+-- this whole block to disable it instantly, nothing else depends on it.
+--
+-- Two zones, not one: a slim edge strip to trigger *opening* (dwell-gated, so
+-- dragging a window to the bottom edge or resizing doesn't false-trigger),
+-- and a much taller "stay open" zone once it's open, so moving the cursor up
+-- into the dock's own icons to click one doesn't immediately hide it again.
+--
+-- hl.get_cursor_pos(), hl.dsp.cursor.move() and the monitor's x/y are all LOGICAL
+-- layout pixels, but hl.get_monitor_at_cursor()'s width/height are PHYSICAL (plus a
+-- `scale` field). So only the height is divided by scale: bottom = y + height/scale,
+-- NOT (y + height)/scale -- that is only right when y == 0, and puts the trigger far
+-- above the real edge as soon as the monitor sits lower in the layout.
 do
   local dockOpen = false
   local dockEdgeMs = 0
@@ -48,9 +64,23 @@ do
   local closeDwellMs = 250
   local triggerZonePx = 4
   local stayOpenZonePx = 170
+  local dockEdgeArmed = false
 
+  -- "summon"/"hide", not "toggle": toggle flips whatever the real overlay
+  -- state currently is, which is wrong here on two counts. (1) It can only
+  -- be as correct as this timer's own `dockOpen` guess, and Dock.qml closes
+  -- the real overlay two ways this timer never sees -- clicking a dock tile
+  -- (focusEntry -> dismiss(), which also calls shell.hide() directly) or
+  -- clicking away from it (its click-outside MouseArea) -- so `dockOpen` can
+  -- read true while the dock is actually closed. (2) The overlay's own
+  -- documented generic IPC contract is `shell toggle crazybadger.app-dock`,
+  -- so a manual keybind using that same contract can open/close it outside
+  -- this timer entirely. Either way, sending "toggle" to *open* can instead
+  -- close it. "summon" and "hide" (shell.qml) are both idempotent -- summon
+  -- always ends with it open, hide always ends with it closed -- so this is
+  -- correct regardless of what the real state already was.
   local function setDock(open)
-    hl.dispatch(hl.dsp.exec_cmd("omarchy-shell shell " .. (open and "toggle" or "hide") .. " crazybadger.app-dock"))
+    hl.dispatch(hl.dsp.exec_cmd("omarchy-shell shell " .. (open and "summon" or "hide") .. " crazybadger.app-dock"))
   end
 
   hl.timer(function()
@@ -60,18 +90,31 @@ do
       local logicalBottom = mon.y + mon.height / (mon.scale or 1)
       local fromBottom = logicalBottom - pos.y
 
-      if not dockOpen then
-        if fromBottom <= triggerZonePx then
+      -- The open-trigger check runs every poll regardless of `dockOpen` --
+      -- NOT only "if not dockOpen" -- because `dockOpen` can be stale (see
+      -- above) with no way for this timer to learn the dock actually closed.
+      -- Gating this behind `dockOpen` was the actual bug: once stale-true,
+      -- this whole check was skipped forever, so a fresh dwell at the true
+      -- edge could never re-open it -- only leaving the wider stay-open zone
+      -- for closeDwellMs (resetting dockOpen) made it work again. `armed`
+      -- still limits it to firing once per continuous dwell in the zone, the
+      -- same as before, just no longer gated on a value that can go stale.
+      if fromBottom <= triggerZonePx then
+        if not dockEdgeArmed then
           dockEdgeMs = dockEdgeMs + pollMs
           if dockEdgeMs >= openDwellMs then
-            dockOpen = true
+            dockEdgeArmed = true
             dockEdgeMs = 0
+            dockOpen = true
             setDock(true)
           end
-        else
-          dockEdgeMs = 0
         end
       else
+        dockEdgeMs = 0
+        dockEdgeArmed = false
+      end
+
+      if dockOpen then
         if fromBottom <= stayOpenZonePx then
           dockLeaveMs = 0
         else
